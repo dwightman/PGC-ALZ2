@@ -1,0 +1,123 @@
+###### QC, imputation, logistic regression ############################
+#uses ricopili pipeline https://sites.google.com/a/broadinstitute.org/ricopili/home 
+#general format for analysis for TwinGene, DemGene1, DemGene2, DemGene3, DemGene4, DemGene5, STSA, ANMerge1, ANMerge23, Gothenburg H70 Birth Cohort Studies and Clinical AD from Sweden (Gothenburg)
+
+########preimputation#############
+
+#run checks on data
+data=dataset1
+head *fam
+echo "n total" && wc -l $data.fam
+echo "n Cases" && awk '$6==2' $data.fam | wc -l
+echo "n Controls" && awk '$6==1' $data.fam | wc -l
+echo "n female cases" && awk '$5==2 && $6==2' $data.fam | wc -l
+echo "n male cases" && awk '$5==1 && $6==2' $data.fam | wc -l
+echo "n female controls" && awk '$5==2 && $6==1' $data.fam | wc -l
+echo "n male controls" && awk '$5==1 && $6==1' $data.fam | wc -l
+echo "n SNPs" && wc -l $data.bim
+
+
+#qc
+preimp_dir --dis alz --pop eur --out dataset1
+
+
+
+#################PCA###########################
+
+#DO PCA WITH REFERENCE DATA
+
+pcaer --out dataset1pca dataset1qc.bim 
+pcaer --out dataset1pcaref dataset1qc.bim pop_4pop_mix_SEQ.bim 
+
+#find individuals which fall outside of the reference EUR cluster and remove them
+
+plink --bfile dataset1qc.bim --keep EUR.txt --make-bed --out dataset1EUR
+
+###################### IMPUTATION PREP #########################################
+
+#Make frequency file
+plink --bfile dataset1EUR --freq --out dataset1EURfrq
+
+#clean up data for imputation using McCarthy tools https://www.well.ox.ac.uk/~wrayner/tools/ 
+perl HRC-1000G-check-bim.pl -b dataset1EUR.bim -f dataset1EURfrq.frq -h -r HRC.r1-1.GRCh37.wgs.mac5.sites.tab
+chmod +x Run-plink.sh
+
+./Run-plink.sh
+
+#replace chr 23 with an X
+
+sed -i 's/2[0-9]/X/g' dataset1EUR-updated-chr23.bim
+
+#Convert clean files to vcf
+for i in `seq 1 23`;  
+do 
+plink --bfile dataset1EUR-updated-chr${i} --keep-allele-order --recode vcf-iid --out dataset1EUR-updated-chr${i}
+	bgzip dataset1EUR-updated-chr${i}.vcf
+done
+
+#tabix
+for i in {1..23}
+do
+tabix -p vcf dataset1EUR-updated-chr${i}.vcf.gz
+done
+
+#impute the vcf to HRC 
+
+# convert back to plink and analyse #
+
+#unzip imputed chromosomes
+password=""
+for i in {1..22}
+do
+7z x -p${password} chr_${i}.zip
+done
+
+#find SNPS with INFO <0.8 and MAF==0
+for i in {1..22}
+do
+	zcat chr${i}.info.gz | awk '{ if ($7 < 0.8) print $1}' | grep ":" > SNPsunder0.8_${i}.txt
+	zcat chr${i}.info.gz | awk '{ if ($5 == 0) print $1}' | grep ":" > SNPsMAF0_${i}.txt
+done
+
+#create PLINK files
+
+module load plink/1.90b6.9
+
+for i in {1..22}
+do
+	cat SNPsunder0.8_${i}.txt SNPsMAF0_${i}.txt | sort | uniq > SNPs2remove${i}.txt
+	plink --vcf chr${i}.dose.vcf.gz --double-id --make-bed --out chr${i}
+	plink --bfile chr${i} --exclude SNPs2remove${i}.txt --make-bed --out chr${i}kept
+done
+
+for b in {2..22}
+do
+	echo chr${b}kept.bed chr${b}kept.bim chr${b}kept.fam >> mergelist.txt
+done
+
+#merge and update phenotype
+plink --bfile chr1kept --merge-list mergelist.txt --make-bed --out dataset1HRCX
+
+awk '{$1=$2; print}' dataset1EUR.fam > oldfam
+plink --bfile dataset1HRCX --update-sex oldfam 3 --pheno oldfam --mpheno 4 --make-bed --out dataset1HRCXu
+
+#get frq
+plink --bfile dataset1HRCXu --freq case-control --out dataset1HRCXufrq
+
+#remove people who overlap with other datasets according to ricopili pca
+plink --bfile dataset1HRCXu --keep people2keep --make-bed --out dataset1HRCXno
+
+
+#get covars
+#PCA
+pcaer --out Pdataset1EUR dataset1EUR.bim 
+
+#use sex, pcs 1-4 and significant pcs
+
+
+#LOGISTIC REGRESSION
+sigpc=""
+plink --bfile dataset1HRCXno --logistic --ci 0.95 --covar dataset1HRCcovar.cov --covar-number $sigpc --out dataset1HRCXlogiPCs
+
+
+

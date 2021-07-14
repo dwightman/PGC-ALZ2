@@ -1,0 +1,80 @@
+#### EXAMPLE SCRIPT for mvGWAMA ########################
+
+
+#mvGWAMAconfig.txt
+chrom CHR
+pos POS
+a1 A1
+a2 A2
+p P
+effect BETA
+weight N
+process dataset1.txt
+
+chrom CHR
+pos POS
+a1 A1
+a2 A2
+p P
+effect BETA
+weight N
+process dataset2.txt
+
+chrom CHR
+pos POS
+a1 A1
+a2 A2
+p P
+effect BETA
+weight N
+process dataset3.txt
+
+###################
+
+#mvGWAMAintercept.txt
+0
+0 0
+
+
+#mvGwama.sh
+module load Python/2.7.15-intel-2019b
+
+for i in {1..5}
+do
+	python mvGWAMA.py -c mvGWAMAconfig.txt -i mvGWAMAintercept.txt --twoside --neff-per-snp -ch $i --out temp$i &
+done
+wait
+
+for i in {6..10}
+do
+	python mvGWAMA.py -c mvGWAMAconfig.txt -i mvGWAMAintercept.txt --twoside --neff-per-snp -ch $i --out temp$i &
+done
+wait
+
+for i in {11..15}
+do
+	python mvGWAMA.py -c mvGWAMAconfig.txt -i mvGWAMAintercept.txt --twoside --neff-per-snp -ch $i --out temp$i &
+done
+wait
+
+for i in {16..20}
+do
+	python mvGWAMA.py -c mvGWAMAconfig.txt -i mvGWAMAintercept.txt --twoside --neff-per-snp -ch $i --out temp$i &
+done
+wait
+
+for i in {21..23}
+do
+	python mvGWAMA.py -c mvGWAMAconfig.txt -i mvGWAMAintercept.txt --twoside --neff-per-snp -ch $i --out temp$i &
+done
+wait
+
+for i in {2..22}
+do
+	awk 'NR>=2' temp$i.txt >>temp1.txt
+done
+
+mv temp1.txt mvGWAMAmeta.txt
+
+###################################################################################
+

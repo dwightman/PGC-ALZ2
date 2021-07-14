@@ -1,0 +1,136 @@
+############### finemapping coms with susieR #############################
+
+
+###chunk the data into genomic risk loci, where all variants within 1.5 Mb either side the lead snp are included in the chunk
+###uses UKB biobank data as an LD reference
+
+#susie.R
+args = commandArgs(trailingOnly=TRUE)
+library(susieR)
+library(data.table)
+
+#read in gwas data chunk
+AD<-fread(args[1], header=F)
+
+#get raw genotype data
+p<-fread(args[2])
+#get rid of ped info
+p<-as.data.table(p[,-c(1,2,3,4,5,6)])
+#get sample size for weights
+w<-1/(as.numeric(dim(p)[1]))
+
+#impute missing genotypes with row means
+k <- which(is.na(p), arr.ind=TRUE)
+p[k] <- rowMeans(p, na.rm=TRUE)[k[,1]]
+
+#find columns (snps) which are monomorphic have a range of 0
+r<-apply(p,2,function(x) length(unique(x)))
+#get the names of those snps
+mono<-names(r[r==1])
+dim(mono)
+#get the snps that are not monomorphic
+names<-colnames(p)[!(colnames(p) %in% mono)]
+#keep the non-monomorphic snps 
+print("get rid of monomorphic")
+Sys.time()
+q<-p[,..names]
+
+rm(p)
+
+print("any NAs in input?")
+any(is.na(q))
+
+#create correlation matrix based on UKB data
+print("do cor")
+Sys.time()
+ldmatrix<-data.matrix(cor(q))
+print("any NAs in cor?")
+any(is.na(ldmatrix))
+
+fwrite(ldmatrix, file=paste(args[1],".ld",sep=""), col.names=T, row.names=T, sep=" ", quote=F, na=NA)
+
+rm(q)
+#remove the tested allele from the snp name in row names
+rownames(ldmatrix)<-gsub('_([^_]*)$','',rownames(ldmatrix))
+#get the tested allele from colnames
+ldA1<-gsub('.*(?=.$)','', colnames(ldmatrix), perl=T)
+
+#trim AD to match the ld matrix
+print("AD dimension")
+dim(AD)
+print("matrix dimension")
+dim(ldmatrix)
+
+#get the snps that are in the meta-analysis data but not the UKB reference
+NO<-AD[!(AD$V1 %in% rownames(ldmatrix)),]
+print("SNPs in META but not UKB reference")
+NO
+
+#get the meta-analysis snps that are in the LD reference
+AD<-AD[AD$V1 %in% rownames(ldmatrix),]
+print("trimmed AD")
+dim(AD)
+all(AD$V1==rownames(ldmatrix))
+
+#check if the alleles match
+all(AD$V4==ldA1)
+
+#run susieR with max number of causal variants as 10
+fitted_rss <- susie_rss(AD$V6, ldmatrix, z_ld_weight = w ,L = 10,estimate_residual_variance = TRUE,estimate_prior_variance = TRUE)
+print(args[1])
+print(args[2])
+print("1")
+
+#this gets the model snps and turns them into indexable values to find the snp name of those snps
+print(summary(fitted_rss))
+sigsnps<-summary(fitted_rss)$cs[,5]
+print("interesting bit")
+if (!is.null(sigsnps)) {
+	ss<-as.numeric(scan(text=sigsnps, what='character',sep=','))
+	print(rownames(ldmatrix)[ss])
+}
+
+#print warnings
+print("Warnings:")
+warnings()
+
+#make a table of the PIP per variant and save the Credible set info
+va<-summary(fitted_rss)$vars
+va$snp<-AD$V1[va$variable]
+
+ca<-summary(fitted_rss)$cs
+
+for(i in 1:dim(ca)[1]) {
+	nam<-as.numeric(unlist(strsplit(ca$variable[i], split=",")))
+	cs1<-AD$V1[nam]
+	ca$snp[i]<-paste(cs1, collapse=",")
+}
+
+fwrite(va, file=paste("Susieresults_SNP_",args[1],sep=""), sep=" ", col.names=T, row.names=F, quote=F, na=NA)
+fwrite(ca, file=paste("Susieresults_CS_",args[1],sep=""), sep=" ", col.names=T, row.names=F, quote=F, na=NA)
+
+
+############################################################################
+
+
+
+#i=chunk number
+#$1= chromosome number
+
+#get snps in meta-analysis chunk
+awk '{print $1}' AD${i}.txt  > tmp
+#get snps and tested allele in meta-analysis chunk
+awk '{print $1,$4}' AD${i}.txt  > a1.txt
+#extraxt snps in meta-analysis chunk
+plink --bfile chr${1}_EUR  --extract tmp  --missing --out g${i}
+#get the top 100k genotyped individuals for the testable snps
+sort -n -k4 g${i}.imiss | tail -n 287533 | awk '{print $1,$2}' >> d${i}.txt
+#extract the 100k people and produce a plink raw file
+plink --bfile chr${1}_EUR  --extract tmp --remove d${i}.txt  --recodeA --recode-allele a1.txt --out g${i}
+#get frequency to compare with meta-analysis chunk snps
+plink --bfile chr${1}_EUR  --extract tmp --remove d${i}.txt --freq --out g${i}
+#run susie
+Rscript susie.R AD${i}.txt g${i}.raw
+
+
+

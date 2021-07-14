@@ -1,0 +1,141 @@
+##################### Enrichment of genomic risk loci ########################
+#MHC (6:32180146-32713511) is excluded from these analyses
+
+
+#chromatin state enrichment from https://egg2.wustl.edu/roadmap/data/byFileType/chromhmmSegmentations/ChmmModels/coreMarks/jointModel/final/all.mnemonics.bedFiles.tgz
+
+#overlap.R
+args = commandArgs(trailingOnly=TRUE)
+library(data.table)
+library(GenomicRanges)
+chrom<-fread("tmp")
+colnames(chrom)<-c("chr", "start", "end","state")
+
+#risk loci
+data<-fread("data")
+colnames(data)<-c("chr","pos")
+
+#get ranges for chromatin interaction first contact
+ci1_gr <- with(chrom, GRanges(seqname=chr, IRanges(start=start, end=end)))
+
+#get ranges for the variants
+data_gr <- with(data, GRanges(seqnames=chr, IRanges(start=pos, end=pos)))
+
+#get overlap
+overlap <- findOverlaps(data_gr, ci1_gr)
+
+#find the chromatin states that overlap with each variants
+chrstates<-(subjectHits(overlap))
+table(chrom$state[chrstates])
+print("number less than equal to 7:")
+a<-sum(chrom$state[chrstates]<=7)
+print(a)
+print("number more than 7:")
+b<-sum(chrom$state[chrstates]>7)
+print(b)
+
+
+#all variants
+data<-fread("fulldata")
+colnames(data)<-c("chr","pos")
+
+#get ranges for chromatin interaction first contact
+ci1_gr <- with(chrom, GRanges(seqname=chr, IRanges(start=start, end=end)))
+
+#get ranges for the variants
+data_gr <- with(data, GRanges(seqnames=chr, IRanges(start=pos, end=pos)))
+
+#get overlap
+overlap <- findOverlaps(data_gr, ci1_gr)
+
+#find the chromatin states that overlap with each variants
+chrstates<-(subjectHits(overlap))
+table(chrom$state[chrstates])
+print("number less than equal to 7:")
+c<-sum(chrom$state[chrstates]<=7)
+#remove number of variants that are in locus
+c<-c-a
+print(c)
+print("number more than 7:")
+d<-sum(chrom$state[chrstates]>7)
+#remove number of variants that are in locus
+d<-d-b
+print(d)
+
+mat<-matrix(c(a,c,b,d),nrow=2,ncol=2)
+mat
+fisher.test(mat)
+q<-fisher.test(mat)
+
+###########################################
+#usage Rscript overlap.R
+#requires files called "data" and "tmp"
+#data is the chr and pos of the meta-analysis genomic risk loci snps
+#tmp is the chr, start, and end of the active chromatin regions
+
+
+
+
+
+
+### ANNOVAR enrichment
+#annotate with hg19_refGeneMrna.fa.gz
+
+#annotate all variants in meta-analysis
+perl table_annovar.pl testedvariants.txt humandb/ -buildver hg19 -out testedvariants -protocol refGene -operation g -nastring . -csvout
+
+#annotate all variants in genomic risk loci
+perl table_annovar.pl Alocivariants.txt humandb/ -buildver hg19 -out glocivariants -protocol refGene -operation g -nastring . -csvout
+
+#get counts for each annovar group for all the meta-analysis variants
+tail -n +3 testedvariants.hg19_multianno.csv | cut -d',' -f6 | sed 's/"//g' | sort | uniq -c > testedsum.txt
+
+#get counts for each annovar group for all the genomic risk loci variants
+tail -n +2 glocivariants.hg19_multianno.csv | cut -d',' -f6 | sed 's/"//g' | sort | uniq -c > glocisum.txt
+
+#compare.R
+library(data.table)
+t<-fread("testedsum.txt")
+g<-fread("glocisum.txt")
+#overlap annotations
+t<-t[t$V2 %in% g$V2,]
+all(t$V2==g$V2)
+dataset<-c()
+prop<-c()
+OR<-c()
+min<-c()
+max<-c()
+pval<-c()
+
+for (i in 1:dim(g)[1]){
+a<-g$V1[i]
+b<-45479-a
+c<-t$V1[i]-a
+d<-(14390943-c)-b
+mat<-matrix(c(a,c,b,d),nrow=2,ncol=2)
+mat
+f<-fisher.test(mat)
+dataset<-c(dataset,g$V2[i])
+prop<-c(prop,a/(a+b))
+OR<-c(OR,f$estimate)
+min<-c(min,f$conf.int[1])
+max<-c(max,f$conf.int[2])
+pval<-c(pval,f$p.value)
+}
+
+Fenrich<-as.data.frame(cbind(dataset,prop,OR,min,max,pval))
+colnames(Fenrich)[1]<-"annotation"
+Fenrich$annotation<-as.factor(Fenrich$annotation)
+
+fwrite(Fenrich, file="GenomicrisklociannovarEnrich.txt", sep=" ", col.names=T, row.names=F, quote=F, na=NA)
+
+
+
+
+
+
+##the Enrichment analyses using replicated loci was performed the same way except variants from the following regions (GRCh37) were removed:AGRN (1:985377-1057677), NCK2 (2:106122777-106235428), CLNK (4:11014822-11044972), TNIP1 (5:150432388-150432388), HAVCR2 (5:156506344-156547031), MHC(6:32180146-32713511), TMEM106B (7:12233848-12285140), SHARPIN (8:145018354-145158607), USP6NL/ECHDC3 (10:11487834-11723537), CCDC6 (10:61629823-61785671), ADAM10 (15:58838575-59272096), APH1B (15:63441242-63595878),SCIMP/RABEP1 (17:4958842-5013491), GRN (17:42430244-42590812), ABI3(17:47297297-47475549), TSPOAP1-AS1 (17:56398006-56410041), ACE (17:61545779-61578207), NTN5 (19:49168942-49252574), CD33 (19:51710654-51737991), LILRB2(19:54814234-54834217), APP (21:27473875-27563105).
+
+
+
+

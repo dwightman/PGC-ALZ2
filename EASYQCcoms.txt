@@ -1,0 +1,115 @@
+##### Code used to QC input datasets using easy QC #########################
+
+######### Create EASYQC SCRIPT #######################################
+
+#EasyQC.ecf
+### Please DEFINE here format and input columns of the following EASYIN files
+DEFINE	--pathOut /path/out/
+		--strMissing NA
+		--strSeparator TAB
+		--acolIn CHR;SNP;BP;A1;NMISS;OR;SE;P;A1m;A2;AF;Rsq
+		--acolInClasses integer;character;integer;character;integer;numeric;numeric;numeric;character;character;numeric;numeric
+
+### Please DEFINE here all input files:
+EASYIN	--fileIn /path/to/inputfile.txt
+
+
+#################################################################################################################
+## EASYQC Scripting interface:
+START EASYQC
+
+ADDCOL	--rcdAddCol log(OR)
+	--colOut Beta
+
+####################
+## 1. Sanity checks: 
+#remove NA and large BETA and SE
+
+CLEAN --rcdClean is.na(A1)&is.na(A2) --strCleanName numDrop_Missing_Alleles
+CLEAN --rcdClean is.na(P) --strCleanName numDrop_Missing_P
+CLEAN --rcdClean is.na(Beta) --strCleanName numDrop_Missing_BETA
+CLEAN --rcdClean is.na(SE) --strCleanName numDrop_Missing_SE
+CLEAN --rcdClean is.na(AF) --strCleanName numDrop_Missing_AF
+CLEAN --rcdClean is.na(NMISS) --strCleanName numDrop_Missing_N
+CLEAN --rcdClean is.na(Rsq) --strCleanName numDrop_Missing_Imputation
+
+CLEAN --rcdClean P<0|P>1 --strCleanName numDrop_invalid_PVAL
+CLEAN --rcdClean SE<=0|SE==Inf|SE>=10 --strCleanName numDrop_invalid_SE
+CLEAN --rcdClean abs(Beta)>=10 --strCleanName numDrop_invalid_BETA
+CLEAN --rcdClean AF<0|AF>1 --strCleanName numDrop_invalid_AF
+
+
+## reduce significant figures
+EDITCOL --rcdEditCol signif(AF,4) --colEdit AF
+EDITCOL --rcdEditCol signif(P,4) --colEdit P
+EDITCOL --rcdEditCol signif(SE,4) --colEdit SE
+EDITCOL --rcdEditCol signif(P,4) --colEdit P
+
+####################
+## 2. Prepare files for filtering and apply minimum thresholds: 
+
+## Exclude monomorphic SNPs:
+CLEAN --rcdClean (AF==0)|(AF==1) --strCleanName numDrop_Monomorph
+
+## Create column with minor allele count:
+ADDCOL --rcdAddCol signif(2*pmin(AF,1-AF)*NMISS,4) --colOut MAC
+
+## Remove low N snps
+## filter thresholds according to your needs. 
+CLEAN --rcdClean NMISS<30 --strCleanName numDrop_Nlt30
+CLEAN --rcdClean MAC<=6 --strCleanName numDrop_MAClet6
+CLEAN --rcdClean Rsq<0.8 --strCleanName numDrop_low_Rsq
+
+
+####################
+## 5.Filter duplicate SNPs
+## This will count duplicates and throw out the SNP with the lower sample size:
+
+CLEANDUPLICATES --colInMarker SNP 
+				--strMode samplesize 
+				--colN NMISS
+
+####################
+## 6. AF Checks
+
+### find AF mismatches
+
+MERGE		--colInMarker SNP
+		--fileRef /HRC/HRCref.txt
+			--acolIn ID;SNP;REF;ALT;AF
+			--acolInClasses character;character;character;character;numeric
+		--strRefSuffix .ref
+		--colRefMarker SNP
+		--blnWriteNotInRef 1
+
+ADJUSTALLELES
+				--colInA1 A1m 
+				--colInA2 A2 
+				--colInFreq AF
+				--colInBeta Beta
+				--colRefA1 ALT.ref
+				--colRefA2 REF.ref
+				--blnMetalUseStrand 0
+				--blnRemoveMismatch 1
+				--blnRemoveInvalid 1	
+				
+AFCHECK --colInFreq AF
+		--colRefFreq AF.ref
+		--numLimOutlier 0.2
+		--blnPlotAll 1
+		
+STOP EASYQC
+
+##########################################################
+
+
+
+#EasyQC.R
+library(EasyQC)
+EasyQC("EasyQC.ecf")
+
+
+Rscript EasyQC.R
+
+
+

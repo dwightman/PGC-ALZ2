@@ -1,0 +1,61 @@
+##### Colocalization ########
+
+#create data chunks for each genomic risk locus where all snps with 1.5 Mb either side of the lead snp are included
+
+#AD= dataframe with snp, pval, AF, N
+#eq= dataframe with snp, AF, GENE, P, N
+
+#colocMAF.R
+args = commandArgs(trailingOnly=TRUE)
+library(coloc)
+library(data.table)
+#read in data
+AD<-fread(args[1], header=F)
+eq<-fread(args[2], header=F)
+
+#trim eqtl to be for one gene
+#need MAF >0
+#eq$V6 is the gene name
+#eq$V10 is Allele freq
+eq1<-eq[eq$V6==args[3],]
+eq1<-eq1[eq1$V10>0,]
+
+#trim data to overlapping snps
+#eq1$V1 and AD$V1 are SNP names
+eq1o<-eq1[eq1$V1 %in% AD$V1,]
+eq1o<-eq1o[!duplicated(eq1o$V1),]
+ADo<-AD[AD$V1 %in% eq1o$V1,]
+all(eq1o$V1==ADo$V1)
+print("N eQTL")
+dim(eq1o)
+print("N AD")
+dim(ADo)
+
+#calculate MAF
+#ADo$V11 is AF
+ADo$V11[ADo$V11>0.5]<-1-ADo$V11[ADo$V11>0.5]
+
+#print which gene and run coloc
+print(args[1])
+print(args[2])
+print(args[3])
+my.res <- coloc.abf(dataset1=list(pvalues=ADo$V7, N=ADo$V8,type="cc", s=0.08018903514, MAF=ADo$V11), dataset2=list(pvalues=eq1o$V7,N=eq1o$V8,MAF=eq1o$V10,type="quant"),p12=1e-6)
+
+#save result if H4 >0.8
+if (my.res$summary[6]>0.8) {
+	sr<-my.res$results
+	ind<-as.numeric(gsub("SNP.","",sr$snp))
+	sr$snp<-ADo$V1[ind]
+	sr<-sr[order(-sr[,17]),]
+	fwrite(sr, file=paste(args[2],"_",args[3],"results.txt",sep=""),sep=" ", col.names=T, row.names=F, quote=F, na=NA)
+	sum<-as.data.frame(my.res$summary)
+	colnames(sum)<-args[3]
+	fwrite(sum, file=paste(args[2],"_",args[3],"summary.txt",sep=""),sep=" ", col.names=T, row.names=T, quote=F, na=NA)
+}
+
+#usage
+#Rscript colocMAF.R [chunk] [eQTL] [GeneNAME]
+
+
+
+

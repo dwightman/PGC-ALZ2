@@ -1,0 +1,23 @@
+###### Heritability and genetic correlation coms ##########################
+
+#LDSC intercept and lambda for full meta-analysis
+mvGWAMAmeta.txt
+
+munge_sumstats.py --out mvGWAMAmeta --sumstats mvGWAMAmeta.txt --N-col Neff  --snp SNP --a1 a1 --a2 a2 --p p --merge-alleles w_hm3.snplist
+
+
+#heritability
+# META-ANALYSIS (excluding UKB)
+#see mvGWAMAcoms.txt
+
+munge_sumstats.py --out mvGWAMAnoUKB --sumstats mvGWAMAnoUKB.txt --N-col Neff  --snp SNP --a1 a1 --a2 a2 --p p --merge-alleles w_hm3.snplist
+
+ldsc.py --h2 mvGWAMAnoUKB.sumstats.gz --ref-ld-chr eur_w_ld_chr/ --w-ld-chr  eur_w_ld_chr/ --samp-prev 0.0574041885 --pop-prev 0.05 --out mvGWAMAnoUKBh2
+
+
+
+#rg between UKB excluded meta-analysis results and UKB data
+munge_sumstats.py --out UKB --sumstats ukb.txt --N-col NMISS  --snp SNP --a1 A1 --a2 A2 --p P --merge-alleles w_hm3.snplist
+
+ldsc.py --rg mvGWAMAnoUKB.sumstats.gz,UKB.sumstats.gz --ref-ld-chr eur_w_ld_chr/ --w-ld-chr eur_w_ld_chr/  --out UKBvsrestRG
+

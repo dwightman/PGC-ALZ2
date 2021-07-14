@@ -1,0 +1,91 @@
+################## POLYGENIC RISK SCORE ###################################
+
+#use metal inverse variance weighted meta-analysis to generate beta and SE to test prediction in Gothenburg H70 Birth Cohort Studies and Clinical AD from Sweden (Gothenburg) cohort
+
+#example metalscript
+#metalscript included all datasets except Gothenburg and UKB biobank 
+#metalscript.txt
+SCHEME STDERR
+
+MARKERLABEL SNP
+ALLELELABELS A1 A2
+PVALUELABEL P
+EFFECTLABEL BETA
+STDERR SE
+PROCESS dataset1.txt
+
+MARKERLABEL SNP
+ALLELELABELS A1 A2
+PVALUELABEL P
+EFFECTLABEL BETA
+STDERR SE
+PROCESS dataset2.txt
+
+ANALYZE
+
+QUIT
+##
+
+#analyse dataset. All datasets had variants with MAF <1/sqrt(2*N) removed prior to meta-analysis
+./metal metalscript.txt
+
+
+#run PRS on Gothenburg dataset
+#Gothenburg dataset is postimputation and has any overlapping individuals removed (code in  QCimpRegressioncoms.txt)
+#covariates are PCs1-4,sig PCs, and sex
+#Mresults.txt is the results from the metal meta-analysis which includes SNP CHR BP A1 A2 BETA SE P
+
+Rscript PRSice.R --dir . --prsice ./PRSice_linux --base Mresults.txt --target GothenburgHRCXno --thread max --stat BETA --beta --binary-target T --cov covars.cov --out metalprs
+
+
+
+##without APOE
+#19:40000000-50000000 has been removed from Mresults.txt
+Rscript PRSice.R --dir . --prsice ./PRSice_linux --base Mresults.txt --target GothenburgHRCXno --thread max --stat BETA --beta --binary-target T --cov covars.cov --out metalprsNoAPOE
+
+
+#run prs using the UKB sumstats as the base model
+
+Rscript PRSice.R --dir . --prsice ./PRSice_linux --base UKBresults.txt --target GothenburgHRCXno --thread max --stat BETA --beta --binary-target T --cov covars.cov --out UKBprs
+
+#without APOE
+#19:40000000-50000000 has been removed from UKBresults.txt
+
+Rscript PRSice.R --dir . --prsice ./PRSice_linux --base UKBresults.txt --target GothenburgHRCXno --thread max --stat BETA --beta --binary-target T --cov covars.cov --out UKBprsnoUKB
+
+
+#compare the two predition is R
+#generate baseline predictions without covariates
+#these do include APOE
+
+Rscript PRSice.R --dir . --prsice ./PRSice_linux --base UKBresults.txt --target GothenburgHRCXno --thread max --stat BETA --beta --binary-target T --out UKBprsBASE
+
+Rscript PRSice.R --dir . --prsice ./PRSice_linux --base Mresults.txt --target GothenburgHRCXno --thread max --stat BETA --beta --binary-target T --out metalprsBASE
+
+
+#combined PRS
+library(data.table)
+y<-fread("GothenburgHRCXno.fam", header=F)
+#remove people with missing phenotype
+y<-y[y$V6>0,]
+uk<-fread("UKBprsBASE.best",header=T)
+me<-fread("metalprsBASE.best",header=T)
+c<-fread("covars.cov", header=T)
+c$ukb<-uk$PRS
+c$metal<-me$PRS
+#overlap individuals
+c<-c[c$FID %in% y$V1,]
+all(c$FID==y$V1)
+#make phenotype binary (1 and 0 rather than 1 and 2)
+c$pheno<-y$V6-1
+
+#fit model of the base predictions
+fit1<-glm(pheno ~ukb+metal, data = c, family = binomial)
+with(summary(fit1), 1 - deviance/null.deviance)
+
+
+
+
+
+
+
