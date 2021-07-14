@@ -42,7 +42,7 @@ GO_cc:go_protein_lipid_complex
 ./magma --gene-results magma.genes.raw --set-annot magma_GS.txt --out co2 --model analyse=file,list.txt condition=GO_bp:go_negative_regulation_of_amyloid_precursor_protein_catabolic_process,Curated_gene_sets:roversi_glioma_copy_number_up
 
 
-#3 Repeat until no gene-set is significant P<3.228931e-06
+#3 Repeat until no gene-set is significant P<3.226639e-06
 ./magma --gene-results magma.genes.raw --set-annot magma_GS.txt --out co3 --model analyse=file,list.txt condition=GO_bp:go_negative_regulation_of_amyloid_precursor_protein_catabolic_process,Curated_gene_sets:roversi_glioma_copy_number_up,GO_cc:go_neurofibrillary_tangle
 
 
