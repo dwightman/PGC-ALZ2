@@ -38,8 +38,6 @@ GO_cc:go_protein_lipid_complex
 #1 condition on the most significant geneset
 ./magma --gene-results magma.genes.raw --set-annot magma_GS.txt --out co1 --model analyse=file,list.txt condition= GO_bp:go_negative_regulation_of_amyloid_precursor_protein_catabolic_process
 
-grep -v "GO_bp:go_negative_regulation_of_amyloid_precursor_protein_catabolic_process" co1.gsa.out | less
-
 #2 select the next most significant gene-set and previous ones
 ./magma --gene-results magma.genes.raw --set-annot magma_GS.txt --out co2 --model analyse=file,list.txt condition=GO_bp:go_negative_regulation_of_amyloid_precursor_protein_catabolic_process,Curated_gene_sets:roversi_glioma_copy_number_up
 
