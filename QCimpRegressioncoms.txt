@@ -44,19 +44,16 @@ chmod +x Run-plink.sh
 
 ./Run-plink.sh
 
-#replace chr 23 with an X
-
-sed -i 's/2[0-9]/X/g' dataset1EUR-updated-chr23.bim
 
 #Convert clean files to vcf
-for i in `seq 1 23`;  
+for i in {1..22}  
 do 
 plink --bfile dataset1EUR-updated-chr${i} --keep-allele-order --recode vcf-iid --out dataset1EUR-updated-chr${i}
 	bgzip dataset1EUR-updated-chr${i}.vcf
 done
 
 #tabix
-for i in {1..23}
+for i in {1..22}
 do
 tabix -p vcf dataset1EUR-updated-chr${i}.vcf.gz
 done
