@@ -1,7 +1,6 @@
 ###### Heritability and genetic correlation coms ##########################
 
 #LDSC intercept and lambda for full meta-analysis
-mvGWAMAmeta.txt
 
 munge_sumstats.py --out mvGWAMAmeta --sumstats mvGWAMAmeta.txt --N-col Neff  --snp SNP --a1 a1 --a2 a2 --p p --merge-alleles w_hm3.snplist
 
